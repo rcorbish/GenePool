@@ -1,9 +1,13 @@
 #!/usr/bin/env python
 
+import sys
 from gene_pool import Chromosone
 
-d = Chromosone.random( 10 ) 
-print(d)
+for _ in range(20) :
+    d = Chromosone.random( 10 ) 
+    print( int(d) )
+
+sys.exit()
 
 # c = Chromosone( b'10110011000000000000011110' )
 c = Chromosone( -1 )

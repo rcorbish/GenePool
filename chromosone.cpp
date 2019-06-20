@@ -1,11 +1,10 @@
+
 #include <Python.h>
 #include <structmember.h>
 
 #include <vector>
 
-#include <cstdlib>
 #include <cstring>
-
 #include <stdlib.h>     /* rand */
 
 /********************************************************************
@@ -28,7 +27,7 @@ typedef struct {
 ********************************************************************/
 
 static void Chromosone_dealloc(Chromosone *self) {
-  std::free( self->data ) ;
+  delete self->data ;
   Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -79,7 +78,7 @@ static int Chromosone_init(Chromosone *self, PyObject *args, PyObject *kwds) {
     }
   }
   self->len = tmp_data.size() ;
-  self->data = (u_int8_t*) std::calloc( sizeof( u_int8_t ), self->len ) ;
+  self->data = new u_int8_t[self->len] ;
   for( size_t i=0 ; i<self->len ; ++i ) {
     self->data[i] = tmp_data[i] ? 1 : 0 ;
   }
@@ -123,7 +122,7 @@ static PyObject *Chromosone_repr( Chromosone *self ) {
  * 
  * Used to implement a dictionary
  * 
- * len()          len(a)
+ * __len__        len(a)
  * __getitem__    a[x]
  * __setitem__    a[x] = y
  *  
@@ -138,7 +137,7 @@ static PyObject* Chromosone_getitem(Chromosone *self, PyObject *ix ) {
     PyGILState_STATE gstate = PyGILState_Ensure();
     PyErr_SetString(PyExc_IndexError, "Out of bounds!" ) ;
     PyGILState_Release(gstate);
-    return NULL ;
+    return 0 ;
   }
   return PyLong_FromLong( self->data[index] ) ;
 }
@@ -149,7 +148,7 @@ static int Chromosone_setitem(Chromosone *self, PyObject *ix, PyObject *val ) {
     PyGILState_STATE gstate = PyGILState_Ensure();
     PyErr_SetString(PyExc_IndexError, "Out of bounds!" ) ;
     PyGILState_Release(gstate);
-    return 1 ;
+    return 0 ;
   }
   int v = PyLong_AsLong( val ) ;
   self->data[index] = v ;
@@ -175,7 +174,7 @@ static PyObject *mutate( Chromosone *self, PyObject *args ) {
   if( argc == 0 ) {
     probability = 0.05 ;
   } else if ( !PyArg_ParseTuple(args, "d", &probability)) {
-    return NULL ;
+    Py_RETURN_NONE ;
   }
   if( probability > 0 ) {
     double r = drand48() ;
@@ -199,6 +198,7 @@ static PyObject *countOnes( Chromosone *self ) {
   return PyLong_FromLong( rc ) ;
 }
 
+
 static PyObject *countZeros( Chromosone *self ) {
   long rc = 0 ;
   for( size_t i=0 ; i<self->len ; ++i ) {
@@ -218,7 +218,7 @@ static PyObject *new_random( PyTypeObject *type, PyObject *args, PyObject *kwds 
     length = PyLong_AsLong( arg ) ;
   } else {
     PyGILState_STATE gstate = PyGILState_Ensure();
-    PyErr_SetString(PyExc_Exception, "random needs 1 numeric argument" ) ;
+    PyErr_SetString(PyExc_Exception, "Random needs 1 numeric argument." ) ;
     PyGILState_Release(gstate);
     Py_RETURN_NONE ;
   }
@@ -375,11 +375,14 @@ static PyObject *nb_invert( Chromosone *a ) {
   return (PyObject *)self ;
 }
 
-
+/*
+ * A helper method to turn the bits into an integer. This
+ * is not part of the normal numbers methods
+ */
 uint64_t as_long( Chromosone *a ) {  
   uint64_t val = 0L ;
   uint8_t *data = a->data + a->len - 1 ;
-  for( uint64_t mask = 1L ; data > a->data ; mask<<=1, --data ) {
+  for( uint64_t mask = 1L ; data >= a->data ; mask<<=1, --data ) {
     if( *data ) {
       val += mask ;
     }
@@ -423,7 +426,7 @@ static PyNumberMethods Chromosone_numbers = {
     0 ,       //  unaryfunc nb_absolute;
     (inquiry)nb_bool ,          //  inquiry nb_bool;
     (unaryfunc)nb_invert ,      //  unaryfunc nb_invert;
-    0 ,       //  binaryfunc nb_lshift;
+    0 ,                         //  binaryfunc nb_lshift;
     0 ,       //  binaryfunc nb_rshift;
     (binaryfunc)nb_and ,        //  binaryfunc nb_and;
     (binaryfunc)nb_xor ,        //  binaryfunc nb_xor;
@@ -452,7 +455,6 @@ static PyNumberMethods Chromosone_numbers = {
 
     0 ,       //  binaryfunc nb_matrix_multiply;
     0         //  binaryfunc nb_inplace_matrix_multiply;
-
 } ;
 
 /********************************************************************

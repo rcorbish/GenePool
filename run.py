@@ -3,45 +3,83 @@
 import random
 from gene_pool import Chromosone
 
-POPULATION=500
-SURVIVOR_RATIO=0.5
-EPOCHS=1200
-MUTATION_RATE=0.03
+POPULATION=200
+SURVIVOR_RATIO=0.3
+EPOCHS=1000
+MUTATION_RATE=0.01
 START = int(POPULATION * SURVIVOR_RATIO)
 
-class Jobby(Chromosone) :
-    def __init__( self, sz ) :
-        Chromosone.__init__( self, sz ) 
-    
+class Genome() :
+    def __init__( self, sz=10, n=3 ) :
+        self.chromosones = []
+        for _ in range(n) :
+            self.chromosones.append( Chromosone.random(sz) )
+
+
+    @classmethod
+    def from_parents( cls, p1, p2, mutation_rate=MUTATION_RATE ) :
+        cc = []
+        for i in range( len(p1.chromosones) ) :
+            c = Chromosone.from_parents( p1.chromosones[i],p2.chromosones[i]) 
+            c.mutate( mutation_rate )
+            cc.append( c )
+        g = Genome()
+        g.chromosones = cc
+        return g
+
+
+    def __repr__( self ) :
+        s = str( int(self.chromosones[0]) ) + " " + \
+            str( int(self.chromosones[1]) ) + " " + \
+            str( int(self.chromosones[2]) ) + " " + \
+            str( self.error() )
+        return s 
+
+
     def error( self ) :
-        da = ( float(self) - 13.0 )
-        return da*da  
+        fa = int(self.chromosones[0]) 
+        fb = int(self.chromosones[1]) 
+        fc = int(self.chromosones[2]) 
+        ft = ( fa*fb - fc ) - 50.0
+        a = (fa + fb + fc) / 3.0
+        da = fa - a
+        db = fb - a
+        dc = fc - a
+        return ft*ft + ( da*da + db*db + dc*dc ) / 50.0 
 
 
 
 def sort( a ) :
-    return a.error()
+    return a.error() 
 
 
 def main() :
+    g1 = Genome()
+    g2 = Genome()
+    g3 = Genome.from_parents( g1, g2 )
 
     genes = []
     for i in range( POPULATION ) :
-        genes.append( Jobby.random( 64 ) )
+        genes.append( Genome( 32, 3 ) )
 
     # for g in genes :
     #     print( float(g) ) 
 
-    for generation in range(EPOCHS) :
+    last_error = 0
+    for epoch in range(EPOCHS) :
         genes = sorted( genes, key=sort, reverse=False )
         for i in range( START, len(genes) ) :
             p1 = random.randint(0,START)
             p2 = random.randint(0,START)
-            c = Jobby.from_parents(  genes[p1], genes[p2] )
-            c.mutate( MUTATION_RATE ) 
+            c = Genome.from_parents( genes[p1], genes[p2] )
+            # c.mutate( MUTATION_RATE ) 
             genes[i] = c
+        er = genes[0].error()
+        if( er != last_error ) :
+            print( epoch, er )
+            last_error = er
 
-    print( float( genes[0] ), float( genes[49] ) )
+    print( genes[0] )
 
 if __name__=="__main__" :
     main()
