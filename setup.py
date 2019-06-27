@@ -2,17 +2,6 @@
 
 from distutils.core import setup, Extension
 
-# cmod_module = Extension(
-#     'cmod',
-#     sources=['cmod.cpp'],
-#     language='C++', )
-
-# setup(
-#     name='cmod',
-#     version='0.1.0',
-#     description='example module written in C++',
-#     ext_modules=[cmod_module], )
-
 
 chromosone_module = Extension(
     'gene_pool',
@@ -25,4 +14,4 @@ setup(
     name='gene_pool',
     version='0.1.0',
     description='example module written in C++',
-    ext_modules=[chromosone_module], )
+    ext_modules=[chromosone_module] )

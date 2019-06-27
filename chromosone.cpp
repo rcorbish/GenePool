@@ -20,6 +20,48 @@ typedef struct {
   u_int8_t *data;
 } Chromosone ;
 
+
+/*
+ * A helper method to turn the bits into an integer. This
+ * is not a public method
+ */
+uint64_t as_long( Chromosone *a ) {  
+  uint64_t val = 0L ;
+  uint8_t *data = a->data + a->len - 1 ;
+  for( uint64_t mask = 1L ; data >= a->data ; mask<<=1, --data ) {
+    if( *data ) {
+      val += mask ;
+    }
+  }
+  return val ;
+}
+
+/*
+ * Given an instance of a Chromosone, set the data to the value
+ * of the given data.
+ */
+void set_long( Chromosone *self, uint64_t x, size_t len ) {
+  delete self->data ;
+  self->data = new uint8_t[len] ;
+  self->len = len ;
+  // self->current = 0 ;
+  uint64_t mask = 1L << (len - 1) ;
+
+  for( size_t i=0 ; i<len ; ++i, mask >>= 1 ) {
+    self->data[i] = ( x & mask ) ? 1 : 0 ;
+  }
+}
+
+/*
+ * Create a new instance of a Chromosone (or a subtype thereof) and
+ * initialize its data & size to the values given.
+ */
+Chromosone *from_long( PyTypeObject *type, uint64_t x, size_t len ) {
+  Chromosone *self = (Chromosone *)type->tp_alloc( type, 0 ) ;
+  set_long( self, x, len ) ;
+  return self ;
+}
+
 /********************************************************************
 *
 * Allocation/deallocation & __init__ definitions 
@@ -43,44 +85,50 @@ static PyObject *Chromosone_new(PyTypeObject *type, PyObject *args, PyObject *kw
  
 static int Chromosone_init(Chromosone *self, PyObject *args, PyObject *kwds) {
   int argc = PyTuple_GET_SIZE( args ) ;
-  std::vector<bool> tmp_data ;
 
-  for( int arg_num=0 ; arg_num<argc ; ++arg_num ) {
-    PyObject *arg = PyTuple_GET_ITEM( args, arg_num ) ;
- 
-    if( PyLong_Check( arg ) ) {
-      long l = PyLong_AsLong( arg ) ;
-      unsigned long mask = 1L << ( (sizeof(long) * CHAR_BIT) - 1 ) ;
-      for( size_t j=0 ; j<(sizeof(long) * CHAR_BIT) ; ++j ) {
-        tmp_data.push_back( (l&mask) != 0 ) ;
-        mask >>= 1 ;
-      }
-    } else if( PyUnicode_Check( arg ) ) {
-      Py_UNICODE *s = PyUnicode_AS_UNICODE( arg ) ;
-      for( int i=0 ; i<PyUnicode_GET_SIZE( arg ) ; ++i ) {
-        tmp_data.push_back( s[i]!='0' ) ;
-      }
-    } else if( PyBytes_Check( arg ) ) {
-      char *s = PyBytes_AsString( arg ) ;
-      for( int i=0 ; i<PyBytes_Size( arg ) ; ++i ) {
-        tmp_data.push_back( s[i]!='0' ) ;
-      }
-    } else if( PyObject_TypeCheck( arg, Py_TYPE(self) ) ) {
-      Chromosone *other = (Chromosone*)arg ;
-      for( size_t i=0 ; i<other->len ; ++i ) {
-        tmp_data.push_back( other->data[i]!=0 ) ;
-      }
-    } else {
-      PyGILState_STATE gstate = PyGILState_Ensure();
-      PyErr_SetString(PyExc_Exception, "Constructor has invalid argument type" ) ;
-      PyGILState_Release(gstate);
-      return 1 ;
-    }
+  if( argc > 1 ) {
+    PyGILState_STATE gstate = PyGILState_Ensure();
+    PyErr_SetString(PyExc_Exception, "Constructor accepts a single argument" ) ;
+    PyGILState_Release(gstate);
+    return 1 ;
   }
-  self->len = tmp_data.size() ;
-  self->data = new u_int8_t[self->len] ;
-  for( size_t i=0 ; i<self->len ; ++i ) {
-    self->data[i] = tmp_data[i] ? 1 : 0 ;
+  PyObject *arg = PyTuple_GET_ITEM( args, 0 ) ;
+
+  if( PyLong_Check( arg ) ) {
+    long l = PyLong_AsLong( arg ) ;
+    set_long( self, l, 8*SIZEOF_LONG ) ;
+  } else if( PyUnicode_Check( arg ) ) {
+    long l = 0L ;
+    long mask = 1L ;
+    size_t len = PyUnicode_GET_SIZE( arg ) ;   
+
+    Py_UNICODE *s = PyUnicode_AS_UNICODE( arg ) ;
+
+    for( int i=len - 1 ; i>=0 ; --i ) {
+        if( s[i] != '0' ) l+= mask ;
+        mask <<= 1 ;
+    }
+    set_long( self, l, len ) ;
+  } else if( PyBytes_Check( arg ) ) {
+    long l = 0L ;
+    long mask = 1L ;
+    size_t len = PyBytes_GET_SIZE( arg ) ;
+    char *s = PyBytes_AsString( arg ) ;
+
+    for( int i=len - 1 ; i>=0 ; --i ) {
+        if( s[i] != '0' ) l+= mask ;
+        mask <<= 1 ;
+    }
+    set_long( self, l, len ) ;
+  } else if( PyObject_TypeCheck( arg, Py_TYPE(self) ) ) {
+    Chromosone *other = (Chromosone*)arg ;
+    long l = as_long( other ) ;
+    set_long( self, l, other->len ) ;
+  } else {
+    PyGILState_STATE gstate = PyGILState_Ensure();
+    PyErr_SetString(PyExc_Exception, "Constructor has invalid argument type" ) ;
+    PyGILState_Release(gstate);
+    return 1 ;
   }
   return 0;
 }
@@ -223,13 +271,11 @@ static PyObject *new_random( PyTypeObject *type, PyObject *args, PyObject *kwds 
     Py_RETURN_NONE ;
   }
 
+  uint64_t mask = ( 1L << length ) - 1L ;
+  uint64_t data = mask & random() ;
+
   Chromosone *self = (Chromosone *)type->tp_alloc( type, 0 ) ;
-  self->data = new uint8_t[length] ;
-  self->len = length ;
-  self->current = 0 ;
-  for( size_t i=0 ; i<self->len ; ++i ) {
-    self->data[i] = random() & 1 ;
-  }
+  set_long( self, data, length ) ;
   return (PyObject*)self ;
 }
 
@@ -293,46 +339,68 @@ static PyMethodDef Chromosone_methods[] = {
  ********************************************************************/
 
 static PyObject *nb_and( Chromosone *a, Chromosone *b ) {
-  PyTypeObject *type = Py_TYPE( a ) ;
-  Chromosone *self = (Chromosone *)type->tp_alloc( type, 0 ) ;
-  self->data = new uint8_t[a->len] ;
-  self->len = a->len ;
-  self->current = 0 ;
-  for( size_t i=0 ; i<self->len ; ++i ) {
-    self->data[i] = a->data[i] & b->data[i] ;
+ 
+  if( a->len != b->len ) {
+    PyGILState_STATE gstate = PyGILState_Ensure();
+    PyErr_SetString(PyExc_IndexError, "Mismatched data length for bitwise operation" ) ;
+    PyGILState_Release(gstate);
+    Py_RETURN_NONE ;
   }
+
+  uint64_t la = as_long( a ) ;
+  uint64_t lb = as_long( b ) ;
+  uint64_t res = lb & la ;
+
+  PyTypeObject *type = Py_TYPE( a ) ;
+  Chromosone *self  = from_long( type, res, a->len ) ;
+
   return (PyObject *)self ;
 }
 
 
 static PyObject *nb_or( Chromosone *a, Chromosone *b ) {
-  PyTypeObject *type = Py_TYPE( a ) ;
-  Chromosone *self = (Chromosone *)type->tp_alloc( type, 0 ) ;
-  self->data = new uint8_t[a->len] ;
-  self->len = a->len ;
-  self->current = 0 ;
-  for( size_t i=0 ; i<self->len ; ++i ) {
-    self->data[i] = a->data[i] | b->data[i] ;
+ 
+  if( a->len != b->len ) {
+    PyGILState_STATE gstate = PyGILState_Ensure();
+    PyErr_SetString(PyExc_IndexError, "Mismatched data length for bitwise operation" ) ;
+    PyGILState_Release(gstate);
+    Py_RETURN_NONE ;
   }
+
+  uint64_t la = as_long( a ) ;
+  uint64_t lb = as_long( b ) ;
+  uint64_t res = lb | la ;
+
+  PyTypeObject *type = Py_TYPE( a ) ;
+  Chromosone *self  = from_long( type, res, a->len ) ;
+
   return (PyObject *)self ;
 }
 
 
 static PyObject *nb_xor( Chromosone *a, Chromosone *b ) {
-  PyTypeObject *type = Py_TYPE( a ) ;
-  Chromosone *self = (Chromosone *)type->tp_alloc( type, 0 ) ;
-  self->data = new uint8_t[a->len] ;
-  self->len = a->len ;
-  self->current = 0 ;
-  for( size_t i=0 ; i<self->len ; ++i ) {
-    self->data[i] = a->data[i] ^ b->data[i] ;
+
+  if( a->len != b->len ) {
+    PyGILState_STATE gstate = PyGILState_Ensure();
+    PyErr_SetString(PyExc_IndexError, "Mismatched data length for bitwise operation" ) ;
+    PyGILState_Release(gstate);
+    Py_RETURN_NONE ;
   }
+
+  uint64_t la = as_long( a ) ;
+  uint64_t lb = as_long( b ) ;
+  uint64_t res = lb ^ la ;
+
+  PyTypeObject *type = Py_TYPE( a ) ;
+  Chromosone *self  = from_long( type, res, a->len ) ;
+
   return (PyObject *)self ;
 }
 
 
 
 static PyObject *nb_inplace_and( Chromosone *a, Chromosone *b ) {
+
   for( size_t i=0 ; i<a->len ; ++i ) {
     a->data[i] &= b->data[i] ;
   }
@@ -356,38 +424,19 @@ static PyObject *nb_inplace_xor( Chromosone *a, Chromosone *b ) {
 }
 
 static int nb_bool( Chromosone *a ) {
-  int rc = 0 ;
-  for( size_t i=0 ; i<a->len ; ++i ) {
-    rc |= a->data[i] ;
-  }
-  return rc ;
+  uint64_t rc = as_long( a ) ;
+  return rc != 0L ;
 }
 
 static PyObject *nb_invert( Chromosone *a ) {
-  PyTypeObject *type = Py_TYPE( a ) ;
-  Chromosone *self = (Chromosone *)type->tp_alloc( type, 0 ) ;
-  self->data = new uint8_t[a->len] ;
-  self->len = a->len ;
-  self->current = 0 ;
-  for( size_t i=0 ; i<a->len ; ++i ) {
-    self->data[i] = !a->data[i] ;
-  }
-  return (PyObject *)self ;
-}
 
-/*
- * A helper method to turn the bits into an integer. This
- * is not part of the normal numbers methods
- */
-uint64_t as_long( Chromosone *a ) {  
-  uint64_t val = 0L ;
-  uint8_t *data = a->data + a->len - 1 ;
-  for( uint64_t mask = 1L ; data >= a->data ; mask<<=1, --data ) {
-    if( *data ) {
-      val += mask ;
-    }
-  }
-  return val ;
+  uint64_t la = as_long( a ) ;
+  uint64_t res = ~la ;
+
+  PyTypeObject *type = Py_TYPE( a ) ;
+  Chromosone *self  = from_long( type, res, a->len ) ;
+
+  return (PyObject *)self ;
 }
 
 
@@ -400,7 +449,6 @@ static PyObject *nb_long( Chromosone *a ) {
 static PyObject *nb_float( Chromosone *a ) {
   uint64_t val = as_long( a ) ;
 
-  // printf("Boo ya %ld\n", sizeof(double) );
   if( a->len >= sizeof(double) * 8 ) {
     return PyFloat_FromDouble( *(double*)&val ) ;
   }

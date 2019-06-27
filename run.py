@@ -6,7 +6,7 @@ from gene_pool import Chromosone
 POPULATION=200
 SURVIVOR_RATIO=0.3
 EPOCHS=1000
-MUTATION_RATE=0.01
+MUTATION_RATE=0.015
 START = int(POPULATION * SURVIVOR_RATIO)
 
 class Genome() :
@@ -14,7 +14,6 @@ class Genome() :
         self.chromosones = []
         for _ in range(n) :
             self.chromosones.append( Chromosone.random(sz) )
-
 
     @classmethod
     def from_parents( cls, p1, p2, mutation_rate=MUTATION_RATE ) :
@@ -27,6 +26,9 @@ class Genome() :
         g.chromosones = cc
         return g
 
+    def mutate( self, rate ) :
+        for c in self.chromosones :
+            c.mutate( rate )
 
     def __repr__( self ) :
         s = str( int(self.chromosones[0]) ) + " " + \
@@ -34,7 +36,6 @@ class Genome() :
             str( int(self.chromosones[2]) ) + " " + \
             str( self.error() )
         return s 
-
 
     def error( self ) :
         fa = int(self.chromosones[0]) 
@@ -45,7 +46,7 @@ class Genome() :
         da = fa - a
         db = fb - a
         dc = fc - a
-        return ft*ft + ( da*da + db*db + dc*dc ) / 50.0 
+        return ft*ft + dc *dc # ( da*da + db*db + dc*dc ) / 20.0 
 
 
 
@@ -72,7 +73,7 @@ def main() :
             p1 = random.randint(0,START)
             p2 = random.randint(0,START)
             c = Genome.from_parents( genes[p1], genes[p2] )
-            # c.mutate( MUTATION_RATE ) 
+            c.mutate( MUTATION_RATE ) 
             genes[i] = c
         er = genes[0].error()
         if( er != last_error ) :
