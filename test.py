@@ -3,9 +3,14 @@
 import sys
 from gene_pool import Chromosone
 
-for _ in range(5) :
-    d = Chromosone.random( 10 ) 
-    print( int(d) )
+mx = 0
+mn = 999999
+for _ in range(5000) :
+    d = Chromosone.random( 8 ) 
+    mx = max( int(d), mx )
+    mn = min( int(d), mn )
+
+print( "8 bits", mn, mx )
 
 a = Chromosone( b'111000' )
 b = Chromosone( b'101111' )
@@ -26,6 +31,10 @@ print( " C ", c, c.capacity )
 print( "OC ", oc, oc.capacity )
 
 c.mutate() 
+print( " C'", c, c.capacity )
+c[0] = 1 
+print( " C'", c, c.capacity )
+c[0] = 0 
 print( " C'", c, c.capacity )
 
 a = Chromosone( b"1111111100000000" )

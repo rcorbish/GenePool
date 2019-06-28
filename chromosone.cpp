@@ -96,7 +96,7 @@ static int Chromosone_init(Chromosone *self, PyObject *args, PyObject *kwds) {
 
   if( PyLong_Check( arg ) ) {
     long l = PyLong_AsLong( arg ) ;
-    set_long( self, l, 8*SIZEOF_LONG ) ;
+    set_long( self, l, CHAR_BIT*SIZEOF_LONG ) ;
   } else if( PyUnicode_Check( arg ) ) {
     long l = 0L ;
     long mask = 1L ;
@@ -110,7 +110,7 @@ static int Chromosone_init(Chromosone *self, PyObject *args, PyObject *kwds) {
     }
     set_long( self, l, len ) ;
   } else if( PyBytes_Check( arg ) ) {
-    long l = 0L ;
+    long l = 0L ; 
     long mask = 1L ;
     size_t len = PyBytes_GET_SIZE( arg ) ;
     char *s = PyBytes_AsString( arg ) ;
@@ -154,13 +154,16 @@ static PyMemberDef Chromosone_members[] = {
 ********************************************************************/
 
 static PyObject *Chromosone_repr( Chromosone *self ) {
-    char rc[ self-> len + 1] ;
-    for( size_t i=0 ; i<self->len ; i++ ) {
-      rc[i] = self->data[i] ? '1' : '0' ;
-    }
-    rc[self->len] = 0 ;
+  uint64_t l = as_long( self ) ;
+  uint64_t mask = 1L << ( self->len - 1 ) ;
+  char rc[ self-> len + 1] ;
 
-    return Py_BuildValue( "s", rc ) ;
+  for( size_t i=0 ; i<self->len ; i++, mask >>= 1L ) {
+    rc[i] = ( l & mask ) ? '1' : '0' ;
+  }
+  rc[self->len] = 0 ;
+
+  return Py_BuildValue( "s", rc ) ;
 };
 
 
@@ -187,7 +190,11 @@ static PyObject* Chromosone_getitem(Chromosone *self, PyObject *ix ) {
     PyGILState_Release(gstate);
     return 0 ;
   }
-  return PyLong_FromLong( self->data[index] ) ;
+  
+  uint64_t l = as_long( self ) ;
+  uint64_t mask = 1L << ( self->len - index - 1 ) ;
+
+  return PyLong_FromLong( ( l & mask ) ? 1 : 0 ) ;
 }
 
 static int Chromosone_setitem(Chromosone *self, PyObject *ix, PyObject *val ) {
@@ -199,7 +206,15 @@ static int Chromosone_setitem(Chromosone *self, PyObject *ix, PyObject *val ) {
     return 0 ;
   }
   int v = PyLong_AsLong( val ) ;
-  self->data[index] = v ;
+  // self->data[index] = v ;
+  uint64_t l = as_long( self ) ;
+  uint64_t mask = 1L << ( self->len - index - 1 ) ;
+  if( v == 0 ) {
+    l &= ~mask ;
+  } else {
+    l |= mask ;
+  }
+  set_long( self, l, self->len ) ;
   return 0 ;
 }
 
@@ -225,34 +240,41 @@ static PyObject *mutate( Chromosone *self, PyObject *args ) {
     Py_RETURN_NONE ;
   }
   if( probability > 0 ) {
-    double r = drand48() ;
-    size_t i = (size_t)(r/probability) ;
-
-    while( i<self->len ) {
-      self->data[i] = !self->data[i] ;
-      r = drand48() ;
-      i += (size_t)(r/probability) ;
+    u_int64_t mask = 0 ;
+    for( size_t i=0 ; i<self->len ; ++i ) {
+      double r = drand48() ;
+      if( r < probability ) {
+        mask |= 1 ;
+      }
+      mask <<= 1 ;
     }
+    u_int64_t l = as_long( self ) ;
+    l ^= mask ;
+    set_long(  self, l, self->len ) ;
   }
   Py_RETURN_NONE ;
 }
 
 
 static PyObject *countOnes( Chromosone *self ) {
+  u_int64_t l = as_long( self ) ;
+
   long rc = 0 ;
-  for( size_t i=0 ; i<self->len ; ++i ) {
-    rc += self->data[i] == 1 ? 1 : 0 ;
+  for( rc = 0; l > 0; ++rc) {
+    l &= l - 1;
   }
   return PyLong_FromLong( rc ) ;
 }
 
 
 static PyObject *countZeros( Chromosone *self ) {
+  u_int64_t l = as_long( self ) ;
+
   long rc = 0 ;
-  for( size_t i=0 ; i<self->len ; ++i ) {
-    rc += self->data[i] == 0 ? 1 : 0 ;
+  for( rc = 0; l > 0; ++rc) {
+    l &= l - 1;
   }
-  return PyLong_FromLong( rc ) ;
+  return PyLong_FromLong( self->len - rc ) ;
 }
 
 
@@ -272,10 +294,10 @@ static PyObject *new_random( PyTypeObject *type, PyObject *args, PyObject *kwds 
   }
 
   uint64_t mask = ( 1L << length ) - 1L ;
-  uint64_t data = mask & random() ;
+  uint64_t l = mask & random() ;
 
   Chromosone *self = (Chromosone *)type->tp_alloc( type, 0 ) ;
-  set_long( self, data, length ) ;
+  set_long( self, l, length ) ;
   return (PyObject*)self ;
 }
 
@@ -312,12 +334,15 @@ static PyObject *from_parents( PyTypeObject *type, PyObject *args ) {
   }
   Chromosone *self = (Chromosone *)type->tp_alloc( type, 0 ) ;
 
-  self->len = p1->len ;
-  self->data = new u_int8_t[ self->len ] ;
+  u_int64_t l1 = as_long( p1 ) ;
+  u_int64_t l2 = as_long( p2 ) ;
+  u_int64_t mask = 1L ;
+  u_int64_t x = 0 ;
 
-  for( size_t i=0 ; i<self->len ; ++i ) {
-    self->data[i] = drand48() < 0.5 ? p1->data[i] : p2->data[i] ;
+  for( size_t i=0 ; i<p1->len ; ++i, mask <<= 1 ) {
+    x |= ( mask & ( drand48() < 0.5 ? l1 : l2) ) ;
   }
+  set_long( self, x, p1->len ) ;
 
   return (PyObject*)self ;
 }
